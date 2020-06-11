@@ -1,15 +1,15 @@
 #include "uf2.h"
 
-// SAMD51 starts at 48MHz by default.
-uint32_t current_cpu_frequency_MHz = 48;
-
 void system_init(void) {
-    // Automatic wait states.
-    NVMCTRL->CTRLA.bit.AUTOWS = 1;
+    /* Set 1 Flash Wait State for 48MHz */
+    NVMCTRL->CTRLA.reg |= NVMCTRL_CTRLA_RWS(0);
 
     // Output GCLK0 to Metro M4 D5. This way we can see if/when we mess it up.
-    // PORT->Group[1].PINCFG[14].bit.PMUXEN = true;
-    // PORT->Group[1].PMUX[7].bit.PMUXE = 12;
+    //PORT->Group[1].PINCFG[14].bit.PMUXEN = true;
+    //PORT->Group[1].PMUX[7].bit.PMUXE = 12;
+
+
+
 
     /* Software reset the module to ensure it is re-initialized correctly */
     /* Note: Due to synchronization, there is a delay from writing CTRL.SWRST until the reset is complete.
@@ -72,6 +72,28 @@ void system_init(void) {
       /* Wait for synchronization */
     }
 
+    //msb put a clock on GC PB20 (SDA pin) for debug; same as FPGA clock test point on Evo
+    REG_PORT_DIRSET1 = PORT_PB20;                         // PB20 as output
+    REG_PORT_OUTCLR1 = PORT_PB20;                         // PB20 cleared
+    PORT->Group[1].PINCFG[20].reg |= PORT_PINCFG_PMUXEN;  // Mux enabled on PB20
+    //PORT->Group[1].PINCFG[20].reg |= PORT_PINCFG_DRVSTR;  // Higher drive on PB20
+    PORT->Group[1].PMUX[10].reg = 0x0C;                   // PB20 as mux function "M" (Gclk)
+  
+    //GCLK->GENCTRL[6].reg = GCLK_GENCTRL_SRC(GCLK_GENCTRL_SRC_DPLL0) |
+    GCLK->GENCTRL[6].reg = GCLK_GENCTRL_SRC(GCLK_GENCTRL_SRC_DFLL) |
+                           GCLK_GENCTRL_IDC |
+                           GCLK_GENCTRL_DIV(4) | // goal is 12MHz to the FPGA
+                           //GCLK_GENCTRL_DIVSEL |
+                           GCLK_GENCTRL_OE |
+                           GCLK_GENCTRL_GENEN;
+
+    //while ( GCLK->SYNCBUSY.reg & GCLK_SYNCBUSY_GENCTRL6) {
+    while (GCLK->SYNCBUSY.bit.GENCTRL6) {
+      /* Wait for synchronization */
+    }
+    // /msb
+
+
     /* Turn on the digital interface clock */
     //MCLK->APBAMASK.reg |= MCLK_APBAMASK_GCLK;
 
@@ -82,8 +104,6 @@ void system_init(void) {
     MCLK->CPUDIV.reg = MCLK_CPUDIV_DIV_DIV1;
 
     SysTick_Config(1000);
-    // No change from initial frequency.
-    // current_cpu_frequency_MHz = 48;
 }
 
 void SysTick_Handler(void) { LED_TICK(); }
